@@ -33,6 +33,13 @@ enum TargetType {
   COLLECTION = 2,
 }
 
+enum ReactiveType {
+  REACTIVE = 0,
+  READONLY = 1,
+  SHALLOW_REACTIVE = 2,
+  SHALLOW_READONLY = 3,
+}
+
 function targetTypeMap(rawType: string) {
   switch (rawType) {
     case 'Object':
@@ -78,13 +85,7 @@ export function reactive(target: object) {
   if (isReadonly(target)) {
     return target
   }
-  return createReactiveObject(
-    target,
-    false,
-    mutableHandlers,
-    mutableCollectionHandlers,
-    reactiveMap,
-  )
+  return createReactiveObject(target, ReactiveType.REACTIVE, reactiveMap)
 }
 
 export declare const ShallowReactiveMarker: unique symbol
@@ -126,9 +127,7 @@ export function shallowReactive<T extends object>(
 ): ShallowReactive<T> {
   return createReactiveObject(
     target,
-    false,
-    shallowReactiveHandlers,
-    shallowCollectionHandlers,
+    ReactiveType.SHALLOW_REACTIVE,
     shallowReactiveMap,
   )
 }
@@ -189,13 +188,7 @@ export type DeepReadonly<T> = T extends Builtin
 export function readonly<T extends object>(
   target: T,
 ): DeepReadonly<UnwrapNestedRefs<T>> {
-  return createReactiveObject(
-    target,
-    true,
-    readonlyHandlers,
-    readonlyCollectionHandlers,
-    readonlyMap,
-  )
+  return createReactiveObject(target, ReactiveType.READONLY, readonlyMap)
 }
 
 /**
@@ -231,18 +224,14 @@ export function readonly<T extends object>(
 export function shallowReadonly<T extends object>(target: T): Readonly<T> {
   return createReactiveObject(
     target,
-    true,
-    shallowReadonlyHandlers,
-    shallowReadonlyCollectionHandlers,
+    ReactiveType.SHALLOW_READONLY,
     shallowReadonlyMap,
   )
 }
 
 function createReactiveObject(
   target: Target,
-  isReadonly: boolean,
-  baseHandlers: ProxyHandler<any>,
-  collectionHandlers: ProxyHandler<any>,
+  type: ReactiveType,
   proxyMap: WeakMap<Target, any>,
 ) {
   if (!isObject(target)) {
@@ -253,14 +242,18 @@ function createReactiveObject(
   }
   // target is already a Proxy, return it.
   // exception: calling readonly() on a reactive object
+  const isReadonly =
+    type === ReactiveType.READONLY || type === ReactiveType.SHALLOW_READONLY
   if (
     target[ReactiveFlags.RAW] &&
     !(isReadonly && target[ReactiveFlags.IS_REACTIVE])
   ) {
     return target
   }
+
   // target already has corresponding Proxy
-  const existingProxy = proxyMap.get(target)
+  let existingProxy = proxyMap.get(target)
+
   if (existingProxy) {
     return existingProxy
   }
@@ -269,10 +262,36 @@ function createReactiveObject(
   if (targetType === TargetType.INVALID) {
     return target
   }
-  const proxy = new Proxy(
-    target,
-    targetType === TargetType.COLLECTION ? collectionHandlers : baseHandlers,
-  )
+
+  const isCollection = targetType === TargetType.COLLECTION
+  let proxyHandler
+
+  switch (type) {
+    case ReactiveType.REACTIVE: {
+      proxyHandler = isCollection ? mutableCollectionHandlers : mutableHandlers
+      break
+    }
+    case ReactiveType.READONLY: {
+      proxyHandler = isCollection
+        ? readonlyCollectionHandlers
+        : readonlyHandlers
+      break
+    }
+    case ReactiveType.SHALLOW_REACTIVE: {
+      proxyHandler = isCollection
+        ? shallowCollectionHandlers
+        : shallowReactiveHandlers
+      break
+    }
+    case ReactiveType.SHALLOW_READONLY: {
+      proxyHandler = isCollection
+        ? shallowReadonlyCollectionHandlers
+        : shallowReadonlyHandlers
+      break
+    }
+  }
+
+  const proxy = new Proxy(target, proxyHandler)
   proxyMap.set(target, proxy)
   return proxy
 }
