@@ -68,7 +68,7 @@ export class ComputedRefImpl<T = any> implements Subscriber {
   /**
    * @internal
    */
-  flags = EffectFlags.DIRTY
+  flags = EffectFlags.DIRTY | EffectFlags.TRACKING
   /**
    * @internal
    */
