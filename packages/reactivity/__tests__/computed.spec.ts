@@ -245,6 +245,36 @@ describe('reactivity/computed', () => {
     ])
   })
 
+  it('debug: call sequence of onTrack', () => {
+    const seq: number[] = []
+    const s = ref(0)
+
+    const track1 = () => seq.push(1)
+    const track2 = () => seq.push(2)
+
+    const c1 = computed(
+      () => {
+        s.value
+      },
+      {
+        onTrack: track1,
+      },
+    )
+
+    const c2 = computed(
+      () => {
+        s.value
+      },
+      {
+        onTrack: track2,
+      },
+    )
+
+    c1.value
+    c2.value
+    expect(seq.toString()).toBe('1,2')
+  })
+
   it('debug: onTrigger', () => {
     let events: DebuggerEvent[] = []
     const onTrigger = vi.fn((e: DebuggerEvent) => {
@@ -278,6 +308,53 @@ describe('reactivity/computed', () => {
       key: 'foo',
       oldValue: 2,
     })
+  })
+
+  it('debug: call sequence of onTrigger', () => {
+    const seq: number[] = []
+    const s = ref(0)
+
+    const trigger1 = () => seq.push(1)
+    const trigger2 = () => seq.push(2)
+    const trigger3 = () => seq.push(3)
+    const trigger4 = () => seq.push(4)
+
+    const c1 = computed(
+      () => {
+        s.value
+      },
+      {
+        onTrigger: trigger1,
+      },
+    )
+
+    const c2 = computed(
+      () => {
+        s.value
+        effect(() => s.value, {
+          onTrigger: trigger3,
+        })
+      },
+      {
+        onTrigger: trigger2,
+      },
+    )
+
+    const c3 = computed(
+      () => {
+        s.value
+      },
+      {
+        onTrigger: trigger4,
+      },
+    )
+
+    c1.value
+    c2.value
+    c3.value
+
+    s.value++
+    expect(seq.toString()).toBe('1,2,3,4')
   })
 
   // https://github.com/vuejs/core/pull/5912#issuecomment-1497596875
